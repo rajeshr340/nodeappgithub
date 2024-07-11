@@ -1,0 +1,86 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - Dev  # Change this to your branch name
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # download-file:
+  #   runs-on: ${{ vars.GIT_RUNNER }}
+
+  #   steps:
+  #   - name: Checkout repository
+  #     uses: actions/checkout@v2
+
+  #   - name: Install SSH client
+  #     run: sudo apt-get install openssh-client -y
+
+  #   - name: Set up SSH keys
+  #     env:
+  #       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY_10_0_2_5 }}  #Runner Private Key
+  #     run: |
+  #       mkdir -p ~/.ssh
+  #       echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+  #       chmod 600 ~/.ssh/id_rsa
+  #       ssh-keyscan -H ${{ vars.SFTP_SERVER_IP }} >> ~/.ssh/known_hosts
+
+  #   #- name: Copy via SFTP
+  #   #  run: |
+  #   #    scp -r ${{vars.SFTP_SERVER_USER}}:${{vars.SFTP_PATH}}/demo.zip /home/azureuser/nodejsapp/
+
+  # scan:
+  #   runs-on:  ${{ vars.GIT_RUNNER }}    
+  #   needs: download-file
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v2
+
+  #     - name: Install ClamAV
+  #       run: sudo apt-get update && sudo apt-get install -y clamav
+
+  #     - name: Download and unzip file
+  #       run: |
+  #         #wget https://path/to/your/zipfile.zip #
+  #         unzip /home/azureuser/nodejsapp/demoapp/nodeapp.zip -d extracted
+
+  #     - name: Scan extracted files with ClamAV
+  #       run: clamscan -r extracted
+
+  #     - name: Show scan results
+  #       run: clamscan --infected --remove --recursive --suppress-ok-results extracted
+  
+  build:
+    runs-on: ${{ vars.GIT_RUNNER }}    
+    #needs: scan
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      
+      - name: Setup nodejs
+        uses: actions/setup-node@v2
+        with:
+          node-version: '12'
+          registry-url: 'https://npm.pkg.github.com'
+          # Defaults to the user or organization that owns the workflow file
+          scope: '@ujjivan-poc'
+    
+      - name: Install dependencies
+        run: npm install  # or yarn install
+
+      - name: Build application
+        run: npm run build  # or your build script command
+
+      - name: Login to GitHub Packages
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+
+      - name: Publish to GitHub Packages
+        run: |
+          npm pack
+          PACKAGE_VERSION=$(node -e "console.log(require('./package.json').version)")
+          docker tag node-js-ec2-deployment:${PACKAGE_VERSION} docker.pkg.github.com/ujjivan-poc/node-js-ec2-deployment/node-js-ec2-deployment:${PACKAGE_VERSION}
+          docker push docker.pkg.github.com/ujjivan-poc/node-js-ec2-deployment/node-js-ec2-deployment:${PACKAGE_VERSION}
